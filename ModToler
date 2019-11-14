@@ -1,0 +1,16 @@
+function [Tolerance]=ModToler(X)
+    % Tolerance = modtole(X) returns an N vector containing the Tolerance
+    % for each column in the input matrix X
+    
+    if isa(X,'table')==1
+        X=table2array(X);
+    end
+    IndX=(1:size(X,2));
+    for i=1:size(X,2)
+        Yi=X(:,i);
+        Xi=[ones(size(X,1),1) X(:,IndX(IndX~=i))];
+
+        [~,~,~,~,stats]=regress(Yi,Xi);
+        Tolerance(i)=1-stats(1);
+    end
+end
