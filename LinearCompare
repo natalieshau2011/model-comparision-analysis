@@ -1,0 +1,224 @@
+function [pre,stats,B1,B2] = LinearCompare(y,X1,varargin)
+    % Introduction
+    %
+    % pre = LinearCompare(y,X1) returns the PRE value for a comparision 
+    % between multi-linear model and simple mean model,the linear model
+    % is defined by adding y as dependent variable and each column 
+    % in X1 as independent variable. X1 could be a matrix or a table. 
+    % y and X1 must contain same number of rows.
+    %
+    % [pre,stats] = LinearCompare(y,X1) also returns an F-test results for
+    % comparision between multi-linear model and simple mean model,
+    % 'stats' is a table containting SSE(A) SSE(C) MSE MSR F-value p-value
+    % and the estimated eta-square.
+    %
+    % pre = LinearCompare(y,X1,x2) returns the PRE value for a comparision
+    % between two multi-linear models. Variabels in first model is defined
+    % by all columns in X1, and the second model is a new one adding 
+    % another variable which is defined by x2 (a vector). All results are 
+    % illustrated in three visualized tables. First, the regress coefficients
+    % and their t test results for original model. Second, the regress
+    % coefficients and their t test results for new model containing x2.
+    % Third, the F test results for new model compared with original model.
+    % Finally, A P-P plot in terms of the residual errors of variable x2
+    % and the residual errors of variable y, both determined by X1
+    %
+    % [pre,stats] = LinearCompare(y,X1,X2) also returns an F-test results 
+    % for comparision between two multi-linear models, with X1 as input of 
+    % Model(A) and X2 as input of Model(C).
+    %
+    % [___,___,B1,B2] = LinearCompare(y,X1,__) returns the estimated
+    % coefficients for two models. The first value is the intercept term 
+    % (if compared with a simple model, B2 is a single value equal to the
+    % mean of y), then followed with each coefficient for each variable 
+    % defined by each column in X1 and X2.
+    
+    if nargin > 3
+        error('输入变量过多')
+    end
+    if nargin < 2
+        error('输入变量过少')
+    end
+    %% 
+    if nargin == 2
+        if isa(X1,'table')==1
+            X1=table2array(X1);
+        end
+        if isa(y,'table')==1
+            y=table2array(y);
+        end
+        if isa(X1,'numeric')==0 || isa(y,'numeric')==0 
+            error('输入数值型变量')
+        else
+            [b,bint,r,~,m]=regress(y,[ones(size(y,1),1) X1],0.046);
+
+            N=size(y,1);
+            PA=size(X1,2)+1;
+            PC=1;
+            
+            df_A=N-PA;
+            df_C=N-PC;
+            df_R=df_C-df_A;
+            
+            pre=m(1);
+            SSE_A=sum(r.^2);
+            SSE_C=sum((y-mean(y)).^2);
+            MSE=SSE_A/df_A;
+            SSR=SSE_C-SSE_A;
+            MSR=(SSE_C-SSE_A)/df_R;
+            F=m(2);
+            pval=m(3);
+            eta_square=1-(1-pre)*df_C/df_A;
+            
+            std=abs(b-bint(:,1))/2;
+            t=b./std;
+            p=1-tcdf(t,df_C);
+            
+            sim='B1=table(';
+            for i=1:size(b,1)
+                eval(['beta',num2str(i-1),'=[b(',num2str(i),');std(',num2str(i),');t(',num2str(i),');p(',num2str(i),')];']);
+                sim=[sim,'beta',num2str(i-1),','];
+            end
+            rowname=["estimateBeta";"standard error";"t value";"p value"];
+            sim=strcat(sim,"'RowNames',rowname)");
+            
+            eval(sim);
+            
+            stats=struct;
+            stats.SS=table(SSR,SSE_A,SSE_C);
+            stats.df=table(df_R,df_A,df_C);
+            stats.MS=table(MSR,MSE);
+            stats.F=F;
+            stats.p=pval;
+            stats.pre=pre;
+            stats.eta_sqaure=eta_square;
+            
+            source=["Regression";"Linear Model";"Mean Model"];
+            SS=[SSR;SSE_A;SSE_C];
+            df=[df_R;df_A;df_C];
+            MS=[string(MSR);string(MSE);""];
+            F=[string(F);"";""];
+            pval=[string(pval);"";""];
+            PRE=[string(pre);"";""];
+            eta_square=[string(eta_square);"";""];
+            
+            tb=table(SS,df,MS,F,pval,PRE,eta_square,'RowNames',source);
+            fig=uifigure;
+            fig.Position=[60,60,1000,300];
+            uitable(fig,'Data',tb,'Position',[20,20,800,100],'ColumnWidth',{100,100,100,100,100,100,100});
+            
+            totalWidth=(size(X1,2)+1)*100+150;
+            ColumnWidth=mat2cell((ones(1,size(X1,2)+1)*100),[1],ones(size(X1,2)+1,1));
+            uitable(fig,'Data',B1,'Position',[20,120,totalWidth,100],'ColumnWidth',ColumnWidth);
+        end
+    end
+    %% 
+    if nargin == 3
+        X2=varargin{1};
+        if isa(X1,'table')==1
+            X1=table2array(X1);
+        end
+        if isa(X2,'table')==1
+            X1=table2array(X1);
+        end
+        if isa(y,'table')==1
+            y=table2array(y);
+        end
+        if isa(X1,'numeric')==0 || isa(X2,'numeric')==0 || isa(y,'numeric')==0 
+            error('输入数值型变量')
+        else
+            [b1,bint1,r1,~,~]=regress(y,[ones(size(y,1),1) X1],0.046);
+            [b2,bint2,r2,~,~]=regress(y,[ones(size(y,1),1) X1 X2],0.046);
+            [~,~,r3,~,~]=regress(X2,[ones(size(y,1),1) X1]);
+           
+            N=size(y,1);
+            
+            SSO=sum((y-mean(y)).^2);
+            SSE_A=sum(r2.^2);
+            SSE_C=sum(r1.^2);
+            SSR=SSE_C-SSE_A;
+            
+            df_A=N-size(X1,2)-size(X2,2)-1;
+            df_C=N-size(X1,2)-1;
+            df_R=size(X2,2);
+            
+            MSR=SSR/df_R;
+            MSE=SSE_A/df_A;
+            
+            F=MSR/MSE;
+            
+            std1=abs(b1-bint1(:,1))/2;
+            std2=abs(b2-bint2(:,1))/2;
+            
+            t1=b1./std1;
+            t2=b2./std2;
+            p1=1-tcdf(t1,df_C);
+            p2=1-tcdf(t2,df_A);
+            
+            rho=partialcorr([y,X2,X1]);
+            partialcorrelation=rho(1,2:1+size(X2,2));
+            partialPRE=partialcorrelation.^2;
+
+            pre=SSR/SSE_C;
+            eta_square=1-(1-pre)*df_C/df_A;
+            
+            sim='B1=table(';
+            for i=1:size(b1,1)
+                eval(['beta',num2str(i-1),'=[b1(',num2str(i),');std1(',num2str(i),');t1(',num2str(i),');p1(',num2str(i),')];']);
+                sim=[sim,'beta',num2str(i-1),','];
+            end
+            rowname=["estimateBeta";"standard error";"t value";"p value"];
+            sim=strcat(sim,"'RowNames',rowname)");
+            eval(sim);
+            
+            sim='B2=table(';
+            for i=1:size(b2,1)
+                eval(['beta',num2str(i-1),'=[b2(',num2str(i),');std2(',num2str(i),');t2(',num2str(i),');p2(',num2str(i),')];']);
+                sim=[sim,'beta',num2str(i-1),','];
+            end
+            rowname=["estimateBeta";"standard error";"t value";"p value"];
+            sim=strcat(sim,"'RowNames',rowname)");
+            eval(sim);
+            
+            stats=struct;
+            stats.SS=table(SSR,SSE_A,SSE_C);
+            stats.df=table(df_R,df_A,df_C);
+            stats.MS=table(MSR,MSE);
+            stats.F=F;
+            stats.pre=pre;
+            stats.eta_square=eta_square;
+            stats.partialpre=partialPRE;
+            stats.partialcorrelation=partialcorrelation;
+            
+            source=["Regression";"Model A";"Model C"];
+            SS=[SSR;SSE_A;SSE_C];
+            df=[df_R;df_A;df_C];
+            MS=[string(MSR);string(MSE);""];
+            F=[string(F);"";""];
+            
+            PRE=[string(pre);"";""];
+            eta_square=[string(eta_square);"";""];
+            
+            tb=table(SS,df,MS,F,PRE,eta_square,'RowNames',source);
+            fig=uifigure;
+            fig.Position=[60,60,1000,400];
+            uitable(fig,'Data',tb,'Position',[20,20,800,100],'ColumnWidth',{100,100,100,100,100,100});
+            
+            totalWidth=(size(X1,2)+1)*100+150;
+            ColumnWidth=mat2cell((ones(1,size(X1,2)+1)*100),[1],ones(size(X1,2)+1,1));
+            uitable(fig,'Data',B1,'Position',[20,220,totalWidth,100],'ColumnWidth',ColumnWidth);
+            
+            totalWidth=(size(X1,2)+size(X2,2)+1)*100+150;
+            ColumnWidth=mat2cell((ones(1,size(X1,2)+1)*100),[1],ones(size(X1,2)+1,1));
+            uitable(fig,'Data',B2,'Position',[20,120,totalWidth,100],'ColumnWidth',ColumnWidth);
+            
+            bpp=regress(r1,[ones(length(r3),1),r3]);
+            rpre=bpp(1)+bpp(2)*r3;
+            scat=scatter(r3,r1);
+            set(scat,'MarkerEdgeColor',[0.07,0.62,1.00],'MarkerFaceColor',[0.30,0.75,0.93],'MarkerFaceAlpha',0.5);
+            hold on
+            fig=plot(r3,rpre);
+            set(fig,'Color','k','LineWidth',3)
+        end
+    end
+end
